@@ -1,0 +1,4 @@
+numpy==1.19.3  # note this avoids an issue with 1.19.4 on windows
+pandas
+plotly
+erddapy
