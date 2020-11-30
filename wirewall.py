@@ -27,7 +27,8 @@ class WireWallMonitor:
     def _add_event_columns(self, df):
         """Add a new columns which apply to events."""
         # calculate the event height with the baseline removed
-        df["event height (cm)"] = df["elPTILE_6 (cm)"] - df["MEDelPTILE_2 (cm)"]
+        df["event depth preferred (cm)"] = df["elMEAN (cm)"] - df["MEDelMEAN (cm)"]
+        df["event depth fallback (cm)"] = df["elPTILE_6 (cm)"] - df["MEDelPTILE_2 (cm)"]
 
         df[self.event_time_column] = df[self.window_time_column].copy()
         time_delta = df["sampleNUM (Dmnless)"] - df["sampleNUM10 (Dmnless)"]
