@@ -2,10 +2,9 @@
 from pathlib import Path
 
 import pandas as pd
+import plotly.express as px
+from plotly.subplots import make_subplots
 from erddapy import ERDDAP
-
-# use plotly for interactive plots
-pd.options.plotting.backend = "plotly"
 
 
 class WireWallMonitor:
@@ -27,7 +26,8 @@ class WireWallMonitor:
     def _add_event_columns(self, df):
         """Add a new columns which apply to events."""
         # calculate the event height with the baseline removed
-        df["event height (cm)"] = df["elPTILE_6 (cm)"] - df["MEDelPTILE_2 (cm)"]
+        df["event depth preferred (cm)"] = df["elMEAN (cm)"] - df["MEDelMEAN (cm)"]
+        df["event depth fallback (cm)"] = df["elPTILE_6 (cm)"] - df["MEDelPTILE_2 (cm)"]
 
         df[self.event_time_column] = df[self.window_time_column].copy()
         time_delta = df["sampleNUM (Dmnless)"] - df["sampleNUM10 (Dmnless)"]
@@ -53,27 +53,87 @@ class WireWallMonitor:
         self._erddap.dataset_id = dataset_id
 
         df = self._erddap.to_pandas(parse_dates=self.datetime_fields)
+        df[self.series_column] = df[self.series_column].astype(str)
         self._add_event_columns(df)
 
         self._erddap.dataset_id = None
 
         return df
 
-    def _plot_window_variables(self, df, column_names):
+    def _plot_dataframe(self, df, x, y):
+        """Plot the given columns of the dataframe."""
+        fig = px.scatter(df, x=x, y=y, color=self.series_column)
+
+        fig.update_layout(
+            yaxis_title=y,
+            xaxis=dict(
+                rangeselector=dict(
+                    buttons=[
+                        dict(count=1, label="1d", step="day", stepmode="backward"),
+                        dict(step="all"),
+                    ],
+                ),
+                rangeslider=dict(visible=True),
+                type="date",
+            ),
+        )
+
+        return fig
+
+    def _plot_window_variables(self, df, column_names, column_names_secondary):
         """Plot variables that are constant over a window timespan."""
         # since these variables are constant over a given window, for a given wire
         # we can remove any rows which are duplicated
         df = df.drop_duplicates(
             [self.window_time_column, self.series_column], keep="first"
         )
-        df = df.pivot(index=self.window_time_column, columns=self.series_column)
 
         figs = [None] * len(column_names)
 
         # use a loop so we can update each fig
-        for i, name in enumerate(column_names):
-            fig = _plot_dataframe(name, df[name])
+        for i, (name, name_secondary) in enumerate(
+            zip(column_names, column_names_secondary)
+        ):
+            subfig1 = self._plot_dataframe(df, x=self.window_time_column, y=name)
+
+            if name_secondary is None:
+                fig = subfig1
+            else:
+                fig = make_subplots(
+                    shared_yaxes=True,
+                    specs=[[{"secondary_y": True}]],
+                )
+
+                subfig2 = self._plot_dataframe(
+                    df, x=self.window_time_column, y=name_secondary
+                )
+
+                # since this plot now has two series, rename them both
+                subfig2.for_each_trace(
+                    lambda trace: trace.update(
+                        name=f"Wire {trace.name} {name_secondary}"
+                    )
+                )
+                subfig1.for_each_trace(
+                    lambda trace: trace.update(name=f"Wire {trace.name} {name}")
+                )
+
+                # distinguish the second trace from the first
+                subfig2.update_traces(
+                    yaxis="y2", marker_symbol="square", line_dash="dot"
+                )
+
+                # combine the traces into one figure
+                fig.add_traces(subfig1.data + subfig2.data)
+
+                fig.update_layout(
+                    yaxis2_title=name_secondary,
+                    yaxis2_matches="y",
+                )
+
             fig.update_traces(mode="lines+markers", selector=dict(type="scatter"))
+            fig.layout.yaxis.title = name
+
             figs[i] = fig
 
         return figs
@@ -83,17 +143,22 @@ class WireWallMonitor:
         # some windows don't have any events and so there may be rows without any
         # sample num value. We are only interested in actual events, so remove them
         df = df.dropna(subset=[self.event_time_column]).copy()
-        df = df.pivot(index=self.event_time_column, columns=self.series_column)
 
         figs = [None] * len(column_names)
 
         # use a loop so we can update each fig
         for i, name in enumerate(column_names):
-            figs[i] = _plot_dataframe(name, df[name])
+            figs[i] = self._plot_dataframe(df, x=self.event_time_column, y=name)
 
         return figs
 
-    def plot_variables(self, dataset_id, window_variables=None, event_variables=None):
+    def plot_variables(
+        self,
+        dataset_id,
+        window_variables=None,
+        window_variables_secondary=None,
+        event_variables=None,
+    ):
         """Plot all the window and event variables for a given dataset.
 
         Args:
@@ -106,10 +171,15 @@ class WireWallMonitor:
         Returns: a list of figures generated, and calls .show() on all of them.
         """
         window_variables = window_variables or []
+        window_variables_secondary = window_variables_secondary or [None] * len(
+            window_variables
+        )
         event_variables = event_variables or []
 
         df = self._get_dataframe(dataset_id)
-        window_figs = self._plot_window_variables(df, window_variables)
+        window_figs = self._plot_window_variables(
+            df, window_variables, window_variables_secondary
+        )
         event_figs = self._plot_event_variables(df, event_variables)
 
         figs = [*window_figs, *event_figs]
@@ -118,26 +188,3 @@ class WireWallMonitor:
             fig.show()
 
         return figs
-
-
-def _plot_dataframe(name, df):
-    """Plot the index on x-axis and columns on the y-axis."""
-    fig = df.plot.scatter(x=df.index, y=df.columns)
-
-    fig.update_layout(
-        yaxis=dict(
-            title=name,
-        ),
-        xaxis=dict(
-            rangeselector=dict(
-                buttons=[
-                    dict(count=1, label="1d", step="day", stepmode="backward"),
-                    dict(step="all"),
-                ],
-            ),
-            rangeslider=dict(visible=True),
-            type="date",
-        ),
-    )
-
-    return fig
