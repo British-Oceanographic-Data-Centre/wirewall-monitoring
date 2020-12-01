@@ -6,6 +6,18 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 from erddapy import ERDDAP
 
+_XAXIS_FORMAT = dict(
+    rangeselector=dict(
+        buttons=[
+            dict(count=1, label="1d", step="day", stepmode="backward"),
+            dict(step="all"),
+        ],
+    ),
+    rangeslider=dict(visible=True),
+    type="date",
+)
+_MARGIN_FORMAT = dict(t=50, b=50)
+
 
 class WireWallMonitor:
     """A class to handle retrieval and plotting of WireWall data."""
@@ -66,16 +78,8 @@ class WireWallMonitor:
 
         fig.update_layout(
             yaxis_title=y,
-            xaxis=dict(
-                rangeselector=dict(
-                    buttons=[
-                        dict(count=1, label="1d", step="day", stepmode="backward"),
-                        dict(step="all"),
-                    ],
-                ),
-                rangeslider=dict(visible=True),
-                type="date",
-            ),
+            xaxis=_XAXIS_FORMAT,
+            margin=_MARGIN_FORMAT,
         )
 
         return fig
@@ -94,18 +98,27 @@ class WireWallMonitor:
         for i, (name, name_secondary) in enumerate(
             zip(column_names, column_names_secondary)
         ):
-            subfig1 = self._plot_dataframe(df, x=self.window_time_column, y=name)
+            subfig1 = self._plot_dataframe(
+                df,
+                x=self.window_time_column,
+                y=name,
+            )
+
+            yaxis_title = name
 
             if name_secondary is None:
                 fig = subfig1
             else:
-                fig = make_subplots(
-                    shared_yaxes=True,
-                    specs=[[{"secondary_y": True}]],
-                )
+                fig = make_subplots()
+
+                # get the units from the columns
+                units = {s.split(" ")[1] for s in [name, name_secondary]}
+                yaxis_title = "value " + " or ".join(units)
 
                 subfig2 = self._plot_dataframe(
-                    df, x=self.window_time_column, y=name_secondary
+                    df,
+                    x=self.window_time_column,
+                    y=name_secondary,
                 )
 
                 # since this plot now has two series, rename them both
@@ -120,19 +133,20 @@ class WireWallMonitor:
 
                 # distinguish the second trace from the first
                 subfig2.update_traces(
-                    yaxis="y2", marker_symbol="square", line_dash="dot"
+                    marker_symbol="square",
+                    line_dash="dot",
                 )
 
                 # combine the traces into one figure
                 fig.add_traces(subfig1.data + subfig2.data)
 
-                fig.update_layout(
-                    yaxis2_title=name_secondary,
-                    yaxis2_matches="y",
-                )
-
             fig.update_traces(mode="lines+markers", selector=dict(type="scatter"))
-            fig.layout.yaxis.title = name
+            fig.update_layout(
+                yaxis_title=yaxis_title,
+                xaxis_title=self.window_time_column,
+                xaxis=_XAXIS_FORMAT,
+                margin=_MARGIN_FORMAT,
+            )
 
             figs[i] = fig
 
