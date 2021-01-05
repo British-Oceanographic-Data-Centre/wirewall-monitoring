@@ -28,13 +28,17 @@ class WireWallMonitor:
     series_column = "wireID (Dmnless)"
     datetime_fields = ["time (UTC)", "gpsTime (UTC)", "timestamp (UTC)"]
 
-    def __init__(self, erddap_server, protocol="tabledap", response="csv"):
+    def __init__(
+        self, erddap_server, constraints=None, protocol="tabledap", response="csv"
+    ):
         """Initialise based on given ERDDAP instance."""
         self._erddap = ERDDAP(
             server=erddap_server,
             protocol=protocol,
             response=response,
         )
+
+        self._erddap.constraints = constraints or []
 
     def _add_event_columns(self, df):
         """Add a new columns which apply to events."""
