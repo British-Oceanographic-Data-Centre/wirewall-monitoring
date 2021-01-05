@@ -1,5 +1,6 @@
 """Helper module for retrieving and plotting WireWall data."""
 from pathlib import Path
+from warnings import warn
 
 import pandas as pd
 import plotly.express as px
@@ -51,12 +52,12 @@ class WireWallMonitor:
         time_delta = time_delta.apply(pd.to_timedelta, unit="S")
 
         # check all events occur in the interval [0, 10] mins from the window start time
-        assert time_delta.max() <= pd.to_timedelta(
-            "10m"
-        ), "Event time is after 10min window"
-        assert time_delta.min() >= pd.to_timedelta(
-            "0m"
-        ), "Event time is before 10min window"
+        warn(
+            "Data has an event that occurs after the 10min sample window.", UserWarning
+        )
+        warn(
+            "Data has an event that occurs before the 10min sample window.", UserWarning
+        )
 
         df[self.event_time_column] += time_delta
 
