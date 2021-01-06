@@ -56,12 +56,17 @@ class WireWallMonitor:
         time_delta = time_delta.apply(pd.to_timedelta, unit="S")
 
         # check all events occur in the interval [0, 10] mins from the window start time
-        warn(
-            "Data has an event that occurs after the 10min sample window.", UserWarning
-        )
-        warn(
-            "Data has an event that occurs before the 10min sample window.", UserWarning
-        )
+        if time_delta.max() > pd.to_timedelta("10m"):
+            warn(
+                "Data has an event that occurs after the 10min sample window.",
+                UserWarning,
+            )
+
+        if time_delta.min() < pd.to_timedelta("0m"):
+            warn(
+                "Data has an event that occurs before the 10min sample window.",
+                UserWarning,
+            )
 
         df[self.event_time_column] += time_delta
 
