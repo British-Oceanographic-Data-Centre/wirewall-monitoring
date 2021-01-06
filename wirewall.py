@@ -1,5 +1,6 @@
 """Helper module for retrieving and plotting WireWall data."""
 from pathlib import Path
+from warnings import warn
 
 import pandas as pd
 import plotly.express as px
@@ -27,13 +28,17 @@ class WireWallMonitor:
     series_column = "wireID (Dmnless)"
     datetime_fields = ["time (UTC)", "gpsTime (UTC)", "timestamp (UTC)"]
 
-    def __init__(self, erddap_server, protocol="tabledap", response="csv"):
+    def __init__(
+        self, erddap_server, constraints=None, protocol="tabledap", response="csv"
+    ):
         """Initialise based on given ERDDAP instance."""
         self._erddap = ERDDAP(
             server=erddap_server,
             protocol=protocol,
             response=response,
         )
+
+        self._erddap.constraints = constraints or []
 
     def _add_event_columns(self, df):
         """Add a new columns which apply to events."""
@@ -51,12 +56,17 @@ class WireWallMonitor:
         time_delta = time_delta.apply(pd.to_timedelta, unit="S")
 
         # check all events occur in the interval [0, 10] mins from the window start time
-        assert time_delta.max() <= pd.to_timedelta(
-            "10m"
-        ), "Event time is after 10min window"
-        assert time_delta.min() >= pd.to_timedelta(
-            "0m"
-        ), "Event time is before 10min window"
+        if time_delta.max() > pd.to_timedelta("10m"):
+            warn(
+                "Data has an event that occurs after the 10min sample window.",
+                UserWarning,
+            )
+
+        if time_delta.min() < pd.to_timedelta("0m"):
+            warn(
+                "Data has an event that occurs before the 10min sample window.",
+                UserWarning,
+            )
 
         df[self.event_time_column] += time_delta
 
